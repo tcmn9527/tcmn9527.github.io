@@ -15,8 +15,9 @@
             min-height: 100vh;
             overflow: hidden;
             color: #fff;
+            user-select: none;
         }
-        /* 星空画布全屏覆盖 */
+        /* 星空画布全屏背景 */
         #starCanvas {
             position: fixed;
             top: 0;
@@ -26,80 +27,93 @@
             background: radial-gradient(ellipse at center, #0c1445 0%, #020517 100%);
             z-index: -1;
         }
-        /* 内容容器居中 */
-        .wrapper {
+        /* 容器铺满全屏，承载可拖拽星辰 */
+        .star-box-container {
             position: relative;
-            z-index: 1;
-            width: 100%;
+            width: 100vw;
             height: 100vh;
+        }
+        /* 圆形星辰卡片核心样式 */
+        .star-item {
+            width: 160px;
+            height: 160px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(130,180,255,0.15) 0%, rgba(255,255,255,0.04) 70%, transparent 100%);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(160, 200, 255, 0.25);
+            box-shadow: 0 0 30px rgba(100, 160, 255, 0.2), inset 0 0 25px rgba(140,190,255,0.1);
+            position: absolute;
+            cursor: grab;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 30px;
-            padding: 20px;
+            padding: 16px;
+            text-align: center;
+            transition: transform 0.2s ease, box-shadow 0.3s ease;
         }
-        /* 星空卡片样式 毛玻璃发光 */
-        .star-card {
-            width: min(550px, 100%);
-            background: rgba(255, 255, 255, 0.06);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(160, 190, 255, 0.18);
-            border-radius: 16px;
-            padding: 22px 28px;
-            transition: all 0.4s ease;
-            box-shadow: 0 0 20px rgba(120, 160, 255, 0.1);
+        /* 拖拽激活状态 */
+        .star-item:active {
+            cursor: grabbing;
+            transform: scale(1.12);
+            box-shadow: 0 0 60px rgba(80, 170, 255, 0.5), inset 0 0 35px rgba(150,200,255,0.18);
         }
-        /* 卡片悬浮星辰发光动画 */
-        .star-card:hover {
-            transform: translateY(-6px) scale(1.02);
-            border-color: rgba(130, 180, 255, 0.4);
-            box-shadow: 0 0 40px rgba(100, 160, 255, 0.35), 0 0 80px rgba(60, 120, 255, 0.15);
+        /* 悬浮发光增强 */
+        .star-item:hover {
+            transform: scale(1.06);
+            box-shadow: 0 0 45px rgba(90, 165, 255, 0.38), inset 0 0 30px rgba(145,195,255,0.15);
         }
         .item-name {
-            font-size: 20px;
+            font-size: 17px;
             font-weight: 500;
-            letter-spacing: 1px;
-            margin-bottom: 8px;
+            letter-spacing: 0.5px;
+            margin-bottom: 10px;
             color: #e6f0ff;
-            text-shadow: 0 0 8px rgba(160, 200, 255, 0.4);
+            text-shadow: 0 0 8px rgba(160, 200, 255, 0.45);
         }
         .item-url a {
-            font-size: 15px;
-            color: #88ccff;
+            font-size: 12px;
+            color: #99ccff;
             text-decoration: none;
             word-break: break-all;
             transition: color 0.3s;
         }
         .item-url a:hover {
             color: #ffffff;
-            text-shadow: 0 0 12px #66b8ff;
+            text-shadow: 0 0 10px #77bfff;
         }
     </style>
 </head>
 <body>
-    <!-- 星空动画画布 -->
+    <!-- 动态星空背景画布 -->
     <canvas id="starCanvas"></canvas>
 
-    <!-- 网址列表区域 -->
-    <div class="wrapper">
-        <!-- 条目1 -->
-        <div class="star-card">
+    <!-- 拖拽星辰容器 -->
+    <div class="star-box-container" id="dragContainer">
+        <!-- 星辰条目1 -->
+        <div class="star-item" data-id="item1">
             <div class="item-name">中国学生现用课本</div>
             <div class="item-url">
                 <a href="https://github.com/TapXWorld/ChinaTextbook/" target="_blank">https://github.com/TapXWorld/ChinaTextbook/</a>
             </div>
         </div>
+        <!-- 星辰条目2 -->
+        <div class="star-item" data-id="item2">
+            <div class="item-name">球球</div>
+            <div class="item-url">
+                <a href="" target="_blank"></a>
+            </div>
+        </div>
+        <!-- 可自行复制新增更多星辰 -->
     </div>
 
-    <!-- JS星空粒子动态效果 -->
     <script>
+        // ========== 1. 星空粒子动画逻辑 ==========
         const canvas = document.getElementById('starCanvas');
         const ctx = canvas.getContext('2d');
         let width, height;
         let stars = [];
 
-        // 适配窗口尺寸
         function resizeCanvas() {
             width = window.innerWidth;
             height = window.innerHeight;
@@ -109,42 +123,33 @@
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
 
-        // 星辰粒子类
         class Star {
             constructor() {
                 this.x = Math.random() * width;
                 this.y = Math.random() * height;
-                // 星辰大小分层
                 this.radius = Math.random() * 1.8 + 0.2;
-                // 闪烁速度
                 this.twinkleSpeed = Math.random() * 0.015 + 0.003;
                 this.opacity = Math.random();
                 this.direction = Math.random() > 0.5 ? 1 : -1;
-                // 缓慢移动
                 this.moveX = (Math.random() - 0.5) * 0.3;
                 this.moveY = (Math.random() - 0.5) * 0.3;
             }
-            // 更新星辰闪烁、位置
             update() {
                 this.opacity += this.twinkleSpeed * this.direction;
                 if (this.opacity > 1) this.direction = -1;
                 if (this.opacity < 0.1) this.direction = 1;
-
                 this.x += this.moveX;
                 this.y += this.moveY;
-                // 边界循环
                 if (this.x < 0) this.x = width;
                 if (this.x > width) this.x = 0;
                 if (this.y < 0) this.y = height;
                 if (this.y > height) this.y = 0;
             }
-            // 绘制星辰
             draw() {
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
                 ctx.fillStyle = `rgba(220, 240, 255, ${this.opacity})`;
                 ctx.fill();
-                // 大星星添加光晕
                 if(this.radius > 1.2) {
                     ctx.beginPath();
                     ctx.arc(this.x, this.y, this.radius * 2.5, 0, Math.PI * 2);
@@ -153,26 +158,119 @@
                 }
             }
         }
-
-        // 生成800颗星辰
         function createStars() {
             stars = [];
-            for(let i = 0; i < 800; i++) {
-                stars.push(new Star());
-            }
+            for(let i = 0; i < 1000; i++) stars.push(new Star());
         }
         createStars();
-
-        // 动画循环
         function animate() {
             ctx.clearRect(0, 0, width, height);
-            stars.forEach(star => {
-                star.update();
-                star.draw();
-            });
+            stars.forEach(star => { star.update(); star.draw(); });
             requestAnimationFrame(animate);
         }
         animate();
+
+        // ========== 2. 碰撞物理+拖拽核心逻辑 ==========
+        const items = Array.from(document.querySelectorAll('.star-item'));
+        const storageKey = 'starItemPositionData';
+        const ITEM_SIZE = 160;
+        const ITEM_RADIUS = ITEM_SIZE / 2;
+        let positionData = JSON.parse(localStorage.getItem(storageKey)) || {};
+        let dragTarget = null;
+        let dragOffsetX = 0, dragOffsetY = 0;
+
+        // 获取元素中心点坐标
+        function getCenter(el) {
+            const left = parseFloat(el.style.left || 0);
+            const top = parseFloat(el.style.top || 0);
+            return {
+                x: left + ITEM_RADIUS,
+                y: top + ITEM_RADIUS
+            };
+        }
+
+        // 设置元素位置，并限制屏幕边界
+        function setPosition(el, x, y) {
+            const maxX = window.innerWidth - ITEM_SIZE;
+            const maxY = window.innerHeight - ITEM_SIZE;
+            x = Math.max(0, Math.min(maxX, x));
+            y = Math.max(0, Math.min(maxY, y));
+            el.style.left = x + 'px';
+            el.style.top = y + 'px';
+            positionData[el.dataset.id] = {x, y};
+        }
+
+        // 碰撞检测 & 推开逻辑
+        function resolveCollisions(movingItem) {
+            const centerA = getCenter(movingItem);
+            for (const other of items) {
+                if (other === movingItem) continue;
+                const centerB = getCenter(other);
+                // 两点距离
+                const dx = centerA.x - centerB.x;
+                const dy = centerA.y - centerB.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                const minDist = ITEM_RADIUS * 2;
+                // 发生重叠，需要推开
+                if (dist < minDist) {
+                    const pushDist = minDist - dist;
+                    const ratio = pushDist / dist;
+                    const pushX = dx * ratio;
+                    const pushY = dy * ratio;
+                    // 拖动的主体只移动一小部分，另一颗被完整推开
+                    const movingNewX = parseFloat(movingItem.style.left) + pushX * 0.2;
+                    const movingNewY = parseFloat(movingItem.style.top) + pushY * 0.2;
+                    const otherNewX = parseFloat(other.style.left) - pushX * 0.8;
+                    const otherNewY = parseFloat(other.style.top) - pushY * 0.8;
+                    setPosition(movingItem, movingNewX, movingNewY);
+                    setPosition(other, otherNewX, otherNewY);
+                }
+            }
+        }
+
+        // 初始化位置
+        items.forEach(item => {
+            const id = item.dataset.id;
+            if(positionData[id]) {
+                setPosition(item, positionData[id].x, positionData[id].y);
+            } else {
+                const rx = Math.random() * (window.innerWidth - ITEM_SIZE);
+                const ry = Math.random() * (window.innerHeight - ITEM_SIZE);
+                setPosition(item, rx, ry);
+            }
+        });
+
+        // 拖拽鼠标按下
+        items.forEach(item => {
+            item.addEventListener('mousedown', (e) => {
+                if(e.target.tagName === 'A') return;
+                dragTarget = item;
+                dragTarget.style.zIndex = 999;
+                const rect = item.getBoundingClientRect();
+                dragOffsetX = e.clientX - rect.left;
+                dragOffsetY = e.clientY - rect.top;
+            });
+        });
+
+        // 鼠标移动，实时拖拽+碰撞解算
+        document.addEventListener('mousemove', (e) => {
+            if (!dragTarget) return;
+            const newX = e.clientX - dragOffsetX;
+            const newY = e.clientY - dragOffsetY;
+            setPosition(dragTarget, newX, newY);
+            // 循环解算所有碰撞，多次迭代避免多层挤压重叠
+            for(let i=0; i<4; i++){
+                resolveCollisions(dragTarget);
+            }
+        });
+
+        // 鼠标松开，结束拖拽保存数据
+        document.addEventListener('mouseup', () => {
+            if (!dragTarget) return;
+            dragTarget.style.zIndex = 1;
+            dragTarget = null;
+            localStorage.setItem(storageKey, JSON.stringify(positionData));
+        });
     </script>
 </body>
 </html>
