@@ -92,23 +92,29 @@
     <div class="star-box-container" id="dragContainer">
         <!-- 星辰条目1 -->
         <div class="star-item" data-id="item1">
-            <div class="item-name">中国学生现用课本</div>
+            <div class="item-name">中国学生课本</div>
             <div class="item-url">
-                <a href="https://github.com/TapXWorld/ChinaTextbook/" target="_blank">https://github.com/TapXWorld/ChinaTextbook/</a>
+                <a href="https://github.com/TapXWorld/ChinaTextbook/" target="_blank">点击打开</a>
             </div>
         </div>
         <!-- 星辰条目2 -->
         <div class="star-item" data-id="item2">
-            <div class="item-name">球球</div>
+            <div class="item-name">中国学生课本</div>
             <div class="item-url">
-                <a href="" target="_blank"></a>
+                <a href="https://github.com/TapXWorld/ChinaTextbook/" target="_blank">点击打开</a>
             </div>
         </div>
-        <!-- 可自行复制新增更多星辰 -->
+        <!-- 新增测试星辰 -->
+        <div class="star-item" data-id="item3">
+            <div class="item-name">中国学生课本</div>
+            <div class="item-url">
+                <a href="https://github.com/TapXWorld/ChinaTextbook/" target="_blank">点击打开</a>
+            </div>
+        </div>
     </div>
 
     <script>
-        // ========== 1. 星空粒子动画逻辑 ==========
+        // ========== 1. 星空粒子背景动画 ==========
         const canvas = document.getElementById('starCanvas');
         const ctx = canvas.getContext('2d');
         let width, height;
@@ -123,7 +129,7 @@
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
 
-        class Star {
+        class BgStar {
             constructor() {
                 this.x = Math.random() * width;
                 this.y = Math.random() * height;
@@ -158,28 +164,51 @@
                 }
             }
         }
-        function createStars() {
+        function createBgStars() {
             stars = [];
-            for(let i = 0; i < 1000; i++) stars.push(new Star());
+            for(let i = 0; i < 1000; i++) stars.push(new BgStar());
         }
-        createStars();
-        function animate() {
+        createBgStars();
+        function animateStarBg() {
             ctx.clearRect(0, 0, width, height);
             stars.forEach(star => { star.update(); star.draw(); });
-            requestAnimationFrame(animate);
+            requestAnimationFrame(animateStarBg);
         }
-        animate();
+        animateStarBg();
 
-        // ========== 2. 碰撞物理+拖拽核心逻辑 ==========
+        // ========== 2. 星辰自主漫游+避障+边界反弹核心配置 ==========
         const items = Array.from(document.querySelectorAll('.star-item'));
         const storageKey = 'starItemPositionData';
         const ITEM_SIZE = 160;
         const ITEM_RADIUS = ITEM_SIZE / 2;
+        const SAFE_DISTANCE = ITEM_RADIUS * 2.6; // 预警避让距离
+        const MAX_SPEED = 0.7; // 漫游最大速度（数值越小越慢）
+        const CHANGE_DIR_INTERVAL = 4500; // 随机改变方向间隔(ms)
+        const BOUND_BOUNCE_FACTOR = -0.9; // 边界反弹系数，负数代表反向
+
         let positionData = JSON.parse(localStorage.getItem(storageKey)) || {};
         let dragTarget = null;
+        let hoverTarget = null; // 新增：当前鼠标悬浮的星辰
         let dragOffsetX = 0, dragOffsetY = 0;
 
-        // 获取元素中心点坐标
+        // 给每个星辰绑定自主漫游数据
+        items.forEach(el => {
+            el.ai = {
+                vx: (Math.random() - 0.5) * MAX_SPEED,
+                vy: (Math.random() - 0.5) * MAX_SPEED,
+                nextDirTime: Date.now() + Math.random() * CHANGE_DIR_INTERVAL
+            }
+            // 悬浮移入：停止移动
+            el.addEventListener('mouseover', () => {
+                hoverTarget = el;
+            })
+            // 悬浮移出：恢复移动
+            el.addEventListener('mouseout', () => {
+                if(hoverTarget === el) hoverTarget = null;
+            })
+        })
+
+        // 获取星辰中心点
         function getCenter(el) {
             const left = parseFloat(el.style.left || 0);
             const top = parseFloat(el.style.top || 0);
@@ -189,7 +218,36 @@
             };
         }
 
-        // 设置元素位置，并限制屏幕边界
+        // 边界碰撞检测，碰到边缘反向速度
+        function wallBounce(el, x, y) {
+            const maxX = window.innerWidth - ITEM_SIZE;
+            const maxY = window.innerHeight - ITEM_SIZE;
+            let newX = x;
+            let newY = y;
+
+            // 左右边界反弹，反转水平速度
+            if (x <= 0) {
+                el.ai.vx *= BOUND_BOUNCE_FACTOR;
+                newX = 1;
+            }
+            if (x >= maxX) {
+                el.ai.vx *= BOUND_BOUNCE_FACTOR;
+                newX = maxX - 1;
+            }
+
+            // 上下边界反弹，反转垂直速度
+            if (y <= 0) {
+                el.ai.vy *= BOUND_BOUNCE_FACTOR;
+                newY = 1;
+            }
+            if (y >= maxY) {
+                el.ai.vy *= BOUND_BOUNCE_FACTOR;
+                newY = maxY - 1;
+            }
+            return { x: newX, y: newY };
+        }
+
+        // 设置位置+边界锁定
         function setPosition(el, x, y) {
             const maxX = window.innerWidth - ITEM_SIZE;
             const maxY = window.innerHeight - ITEM_SIZE;
@@ -200,35 +258,84 @@
             positionData[el.dataset.id] = {x, y};
         }
 
-        // 碰撞检测 & 推开逻辑
-        function resolveCollisions(movingItem) {
-            const centerA = getCenter(movingItem);
-            for (const other of items) {
-                if (other === movingItem) continue;
-                const centerB = getCenter(other);
-                // 两点距离
-                const dx = centerA.x - centerB.x;
-                const dy = centerA.y - centerB.y;
-                const dist = Math.sqrt(dx*dx + dy*dy);
-                const minDist = ITEM_RADIUS * 2;
-                // 发生重叠，需要推开
-                if (dist < minDist) {
-                    const pushDist = minDist - dist;
-                    const ratio = pushDist / dist;
-                    const pushX = dx * ratio;
-                    const pushY = dy * ratio;
-                    // 拖动的主体只移动一小部分，另一颗被完整推开
-                    const movingNewX = parseFloat(movingItem.style.left) + pushX * 0.2;
-                    const movingNewY = parseFloat(movingItem.style.top) + pushY * 0.2;
-                    const otherNewX = parseFloat(other.style.left) - pushX * 0.8;
-                    const otherNewY = parseFloat(other.style.top) - pushY * 0.8;
-                    setPosition(movingItem, movingNewX, movingNewY);
-                    setPosition(other, otherNewX, otherNewY);
+        // 避障逻辑：检测临近星辰，产生避让斥力
+        function avoidObstacle(self) {
+            const selfC = getCenter(self);
+            let steerX = 0, steerY = 0;
+            let count = 0;
+
+            for(const other of items) {
+                if(other === self) continue;
+                const oC = getCenter(other);
+                const dx = selfC.x - oC.x;
+                const dy = selfC.y - oC.y;
+                const dist = Math.hypot(dx, dy);
+
+                // 进入预警范围，生成避让力
+                if(dist < SAFE_DISTANCE) {
+                    const force = (SAFE_DISTANCE - dist) / SAFE_DISTANCE;
+                    steerX += dx / dist * force;
+                    steerY += dy / dist * force;
+                    count++;
                 }
+            }
+
+            if(count > 0) {
+                // 叠加避让力，修正移动方向
+                self.ai.vx += steerX * 0.03;
+                self.ai.vy += steerY * 0.03;
             }
         }
 
-        // 初始化位置
+        // 随机切换漫游方向
+        function randomChangeDir(starAI) {
+            starAI.vx = (Math.random() - 0.5) * MAX_SPEED;
+            starAI.vy = (Math.random() - 0.5) * MAX_SPEED;
+        }
+
+        // 限制速度不超速
+        function limitSpeed(starAI) {
+            const spd = Math.hypot(starAI.vx, starAI.vy);
+            if(spd > MAX_SPEED) {
+                starAI.vx = starAI.vx / spd * MAX_SPEED;
+                starAI.vy = starAI.vy / spd * MAX_SPEED;
+            }
+        }
+
+        // 主漫游循环
+        function roamLoop() {
+            const now = Date.now();
+            items.forEach(el => {
+                // 拖拽中 或 鼠标悬浮在当前星辰上 → 停止自动移动
+                if(el === dragTarget || el === hoverTarget) return;
+
+                // 定时随机换方向
+                if(now > el.ai.nextDirTime) {
+                    randomChangeDir(el.ai);
+                    el.ai.nextDirTime = now + CHANGE_DIR_INTERVAL + Math.random() * 3000;
+                }
+
+                // 执行避障转向
+                avoidObstacle(el);
+                limitSpeed(el.ai);
+
+                // 计算下一帧坐标
+                let nextX = parseFloat(el.style.left) + el.ai.vx;
+                let nextY = parseFloat(el.style.top) + el.ai.vy;
+
+                // 检测屏幕边界，碰到边缘反向速度
+                const bounced = wallBounce(el, nextX, nextY);
+                nextX = bounced.x;
+                nextY = bounced.y;
+
+                // 更新位置
+                setPosition(el, nextX, nextY);
+            })
+            requestAnimationFrame(roamLoop);
+        }
+        roamLoop();
+
+        // 初始化星辰位置
         items.forEach(item => {
             const id = item.dataset.id;
             if(positionData[id]) {
@@ -240,7 +347,7 @@
             }
         });
 
-        // 拖拽鼠标按下
+        // ========== 拖拽交互逻辑 ==========
         items.forEach(item => {
             item.addEventListener('mousedown', (e) => {
                 if(e.target.tagName === 'A') return;
@@ -252,19 +359,13 @@
             });
         });
 
-        // 鼠标移动，实时拖拽+碰撞解算
         document.addEventListener('mousemove', (e) => {
             if (!dragTarget) return;
             const newX = e.clientX - dragOffsetX;
             const newY = e.clientY - dragOffsetY;
             setPosition(dragTarget, newX, newY);
-            // 循环解算所有碰撞，多次迭代避免多层挤压重叠
-            for(let i=0; i<4; i++){
-                resolveCollisions(dragTarget);
-            }
         });
 
-        // 鼠标松开，结束拖拽保存数据
         document.addEventListener('mouseup', () => {
             if (!dragTarget) return;
             dragTarget.style.zIndex = 1;
